@@ -1,0 +1,58 @@
+name: Github CI Workflow Docker
+
+on: push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: golang:1.23
+
+    steps:
+      - name: Проверка валидности кода
+        uses: actions/checkout@v4
+
+      - name: Настройка Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
+
+      - name: Запуск Unit тестов
+        run: |
+          GOOS=linux GOARCH=amd64 go test ./...
+      
+      - name: Vet (проверка на подозрительные конструкции)
+        run: |
+          go vet ./...
+
+  publish:
+    name: Публикация в DockerHub
+    runs-on: ubuntu-latest
+    needs: test
+    container: golang:1.23
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Проверка валидности кода
+        uses: actions/checkout@v4
+
+      - name: Настройка Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Вход в DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: Выгрузка Metadata (tags, labels) для Docker
+        id: meta
+        uses: docker/metadata-action@v5.5.1
+        with:
+          images: nobodymr/parcel_test_workflows
+
+      - name: Сборка и публикация Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
